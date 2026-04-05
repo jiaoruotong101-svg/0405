@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大洋漂流记</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          primary: '#D97706', secondary: '#10B981', accent: '#EA580C',
+          'beige-light': '#FEF9C3', 'beige': '#F5F5DC'
+        },
+        fontFamily: { sans: ['Noto Serif SC', 'serif'] }
+      }
+    }
+  }
+</script>
+<style>
+.glass-effect { background: rgba(255,255,255,0.78); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.5); }
+.mood-btn { 
+    font-size: 32px; width: 60px; height: 60px; display: flex; 
+    align-items: center; justify-content: center; border-radius: 50%; 
+    cursor: pointer; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+    background: transparent; border: none; outline: none;
+}
+.mood-btn:hover { transform: scale(1.15); }
+.mood-btn.active { transform: scale(1.5); filter: drop-shadow(0 10px 8px rgba(0,0,0,0.1)); z-index: 10; }
+
+.wave-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; opacity: 0.12; }
+.calendar-day { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer; transition: all 0.18s; font-size: 13px; }
+.calendar-day.active { background: #d97706; color: #fff; }
+.calendar-day.has-entry { border-bottom: 3px solid #d97706; border-radius: 0; }
+.recording-pulse { animation: pulse 1.5s infinite; background: #fee2e2 !important; color: #dc2626 !important; }
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+.media-preview { position: relative; width: 70px; height: 70px; border-radius: 10px; overflow: hidden; border: 1px solid #eee; }
+.media-preview img, .media-preview video { width: 100%; height: 100%; object-fit: cover; }
+
+.archive-card { position: relative; padding-left: 24px; border-left: 2px solid #e5e7eb; margin-left: 10px; padding-bottom: 20px; cursor: pointer; transition: all 0.2s; }
+.archive-card:hover { border-left-color: #D97706; }
+.archive-dot { position: absolute; left: -9px; top: 0; width: 16px; height: 16px; border-radius: 50%; background: #D97706; border: 3px solid #fff; }
+.tag-pill { background: #fef3c7; color: #92400e; padding: 2px 10px; border-radius: 99px; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+</style>
+</head>
+<body class="bg-beige min-h-screen font-sans text-gray-800">
+
+<div class="wave-bg">
+  <img src="https://p11-flow-imagex-sign.byteimg.com/tos-cn-i-a9rns2rl98/rc/pc/super_tool/4fdb5bb950804ef1b363f5f9ad506a3d~tplv-a9rns2rl98-image.image?lk3s=8e244e95&rcl=20260405130544AD7A2C32F7A933049E0A&rrcfp=f06b921b&x-expires=1777957574&x-signature=wNwb2jg5MHeNeyOb9PM7fQF%2FkLw%3D" class="w-full h-full object-cover">
+</div>
+
+<div class="relative z-10 container mx-auto px-4 py-6 max-w-7xl">
+  <header class="glass-effect rounded-2xl shadow-sm p-4 mb-6 flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center gap-2">
+        <i class="fa fa-anchor text-accent text-2xl"></i>
+        <h1 class="text-2xl font-bold text-accent tracking-tight">漂流记</h1>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <button id="btn-list" class="px-4 py-2 bg-white/60 rounded-xl hover:bg-white text-sm flex items-center gap-2 transition-all shadow-sm"><i class="fa fa-history text-accent"></i>心情存档</button>
+      <button id="btn-stats" class="px-4 py-2 bg-white/60 rounded-xl hover:bg-white text-sm flex items-center gap-2 transition-all shadow-sm"><i class="fa fa-line-chart text-accent"></i>变化曲线</button>
+      <div class="h-6 w-[1px] bg-gray-300 mx-1"></div>
+      <button onclick="exportData()" class="p-2 text-gray-400 hover:text-blue-600" title="导出备份文件"><i class="fa fa-download"></i> 导出备份</button>
+    </div>
+  </header>
+
+  <div class="flex flex-col lg:flex-row gap-6">
+    <div class="lg:w-1/3 space-y-6">
+      <div class="glass-effect rounded-2xl p-5 shadow-sm">
+        <div class="flex justify-between items-center mb-4">
+          <button id="prev-month" class="p-2 hover:bg-primary/10 rounded-full"><i class="fa fa-chevron-left"></i></button>
+          <h2 id="current-month" class="font-bold text-gray-700"></h2>
+          <button id="next-month" class="p-2 hover:bg-primary/10 rounded-full"><i class="fa fa-chevron-right"></i></button>
+        </div>
+        <div id="calendar-grid" class="grid grid-cols-7 gap-1 text-center"></div>
+      </div>
+      
+      <div class="glass-effect rounded-2xl p-5 shadow-sm">
+        <h2 class="font-bold mb-3 text-sm text-gray-500 flex items-center gap-2"><i class="fa fa-check-square-o"></i> 今日备忘</h2>
+        <div id="todo-list" class="space-y-2 mb-4 max-h-40 overflow-y-auto no-scrollbar"></div>
+        <div class="flex gap-2">
+          <input type="text" id="todo-input" placeholder="想做的事..." class="flex-1 p-2 rounded-xl border-none bg-white/50 text-sm focus:ring-1 focus:ring-primary outline-none">
+          <button id="add-todo" class="bg-primary text-white w-10 h-10 rounded-xl shadow-md flex items-center justify-center"><i class="fa fa-plus"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="lg:w-2/3">
+      <div class="glass-effect rounded-3xl p-6 flex flex-col h-full min-h-[700px] shadow-xl border-white/80">
+        <div class="flex justify-between items-start mb-4">
+            <div>
+                <h2 id="diary-date-display" class="text-2xl font-bold text-primary"></h2>
+                <p class="text-xs text-gray-400 mt-1">今日已记录 <span id="today-count" class="font-bold text-accent">0</span> 条心情</p>
+                <div id="tag-container" class="flex flex-wrap gap-2 mt-3"></div>
+            </div>
+            <div class="flex gap-3">
+                <label class="cursor-pointer w-10 h-10 bg-white rounded-full shadow-sm hover:text-primary flex items-center justify-center transition-all">
+                    <i class="fa fa-camera"></i>
+                    <input type="file" id="img-upload" accept="image/*" multiple class="hidden">
+                </label>
+                <label class="cursor-pointer w-10 h-10 bg-white rounded-full shadow-sm hover:text-primary flex items-center justify-center transition-all">
+                    <i class="fa fa-video-camera"></i>
+                    <input type="file" id="video-upload" accept="video/*" class="hidden">
+                </label>
+            </div>
+        </div>
+        
+        <div class="flex justify-between mb-8 px-2 overflow-x-auto py-4 gap-4 no-scrollbar">
+          <button class="mood-btn" data-mood="excited" title="超级兴奋">🤩</button>
+          <button class="mood-btn" data-mood="happy" title="开心">😊</button>
+          <button class="mood-btn" data-mood="neutral" title="平静">😌</button>
+          <button class="mood-btn" data-mood="tired" title="疲惫">😴</button>
+          <button class="mood-btn" data-mood="sad" title="难过">😢</button>
+          <button class="mood-btn" data-mood="angry" title="生气">😠</button>
+        </div>
+
+        <div id="media-gallery" class="flex flex-wrap gap-3 mb-4"></div>
+
+        <div class="mb-6 p-4 bg-white/50 rounded-2xl flex flex-col sm:flex-row items-center justify-between border border-white/60 gap-4">
+          <div class="flex items-center gap-4 w-full sm:w-auto">
+            <button id="record-btn" class="w-14 h-14 flex-shrink-0 rounded-full bg-white flex items-center justify-center shadow-lg hover:scale-105 transition-all">
+              <i class="fa fa-microphone text-red-500 text-2xl"></i>
+            </button>
+            <div id="audio-player-container" class="hidden flex-1 sm:flex-none">
+              <audio id="diary-audio" controls class="h-10 w-full max-w-[240px]"></audio>
+            </div>
+            <div id="record-status-box">
+                <p id="record-status" class="text-sm font-medium text-gray-600">录制语音回忆</p>
+                <button id="delete-audio" class="hidden text-[10px] text-red-400 hover:underline">删除录音</button>
+            </div>
+          </div>
+        </div>
+
+        <input type="text" id="tag-input" placeholder="# 输入标签后按空格或回车添加" class="w-full mb-4 bg-transparent border-b border-gray-200 py-2 text-sm focus:outline-none focus:border-primary">
+
+        <textarea id="diary-content" class="w-full flex-1 p-4 rounded-2xl border-none bg-white/20 focus:bg-white/40 focus:ring-0 outline-none resize-none mb-6 text-lg leading-relaxed" placeholder="这一刻的心情是..."></textarea>
+        
+        <div class="flex justify-end">
+          <button id="save-diary" class="bg-primary text-white px-10 py-4 rounded-2xl hover:bg-primary/90 shadow-xl transition-all flex items-center gap-3 font-bold">
+            <i class="fa fa-paper-plane"></i> 封存此刻
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="list-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-md close-modal"></div>
+  <div class="relative bg-white/95 w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+    <div class="p-6 border-b flex justify-between items-center bg-gray-50/50">
+      <h3 class="text-xl font-bold text-gray-800">航海日志存档</h3>
+      <button class="close-modal text-gray-300 hover:text-gray-600"><i class="fa fa-times-circle text-3xl"></i></button>
+    </div>
+    <div id="diary-list-content" class="overflow-y-auto p-8 space-y-4 no-scrollbar"></div>
+  </div>
+</div>
+
+<div id="detail-modal" class="fixed inset-0 z-[60] hidden flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="document.getElementById('detail-modal').classList.add('hidden')"></div>
+    <div class="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl p-8 overflow-y-auto max-h-[90vh]">
+        <div class="flex justify-between items-start mb-6">
+            <div id="detail-mood-display" class="text-5xl"></div>
+            <button onclick="document.getElementById('detail-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600"><i class="fa fa-times text-xl"></i></button>
+        </div>
+        <p id="detail-date" class="text-primary font-bold text-lg mb-1"></p>
+        <p id="detail-time" class="text-gray-400 text-xs mb-6"></p>
+        <div id="detail-content" class="text-gray-700 leading-relaxed text-lg mb-8 whitespace-pre-wrap"></div>
+        <div id="detail-media" class="flex flex-wrap gap-3 mb-8"></div>
+        <div id="detail-audio-box" class="mb-8"></div>
+        <div id="detail-tags" class="flex flex-wrap gap-2 mb-8 border-t pt-4"></div>
+        <div class="flex justify-end">
+            <button id="detail-delete-btn" class="px-6 py-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 transition-colors text-sm font-bold flex items-center gap-2">
+                <i class="fa fa-trash-o"></i> 删除此条
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="stats-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-md close-modal"></div>
+  <div class="relative bg-white p-8 rounded-[2rem] w-full max-w-3xl shadow-2xl overflow-y-auto max-h-[90vh]">
+    <div class="flex justify-between items-center mb-8">
+        <h3 class="font-bold text-2xl text-gray-800">航行数据统计</h3>
+        <button class="close-modal text-gray-300 hover:text-gray-600"><i class="fa fa-times-circle text-3xl"></i></button>
+    </div>
+    <div class="space-y-10">
+        <div class="h-64"><canvas id="trendChart"></canvas></div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 border-t pt-8">
+            <div class="h-48"><canvas id="moodChart"></canvas></div>
+            <div id="tag-stats-list" class="space-y-2 max-h-48 overflow-y-auto pr-2"></div>
+        </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* --- 基础数据 --- */
+const MOOD_SCORE = { excited: 5, happy: 4, neutral: 3, tired: 2, sad: 1, angry: 0 };
+const MOOD_EMOJI = { excited: '🤩', happy: '😊', neutral: '😌', tired: '😴', sad: '😢', angry: '😠' };
+const MOOD_NAME = { excited: '兴奋', happy: '开心', neutral: '平静', tired: '疲惫', sad: '难过', angry: '生气' };
+
+let currentViewDate = new Date();
+let selectedDateStr = formatDate(new Date());
+let allEntries = JSON.parse(localStorage.getItem('oceanEntries_v2') || '{}');
+let allTodos = JSON.parse(localStorage.getItem('oceanTodos') || '{}');
+let currentTags = [];
+let mediaRecorder, audioChunks = [], isRecording = false;
+
+/* --- 工具函数 --- */
+function formatDate(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const r = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${r}`;
+}
+function formatDateChinese(ds) {
+    const d = new Date(ds.replace(/-/g, '/'));
+    return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+/* --- 初始化 --- */
+function init() {
+    renderCalendar();
+    resetInputArea();
+    renderTodos(selectedDateStr);
+    setupEventListeners();
+}
+
+function renderCalendar() {
+    const grid = document.getElementById('calendar-grid');
+    const monthDisplay = document.getElementById('current-month');
+    grid.innerHTML = '';
+    const year = currentViewDate.getFullYear();
+    const month = currentViewDate.getMonth();
+    monthDisplay.innerText = `${year}年${month + 1}月`;
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    for (let i = 0; i < firstDay; i++) grid.appendChild(document.createElement('div'));
+    for (let d = 1; d <= daysInMonth; d++) {
+        const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const el = document.createElement('div');
+        const hasEntry = allEntries[ds] && allEntries[ds].length > 0;
+        el.className = `calendar-day ${ds === selectedDateStr ? 'active' : ''} ${hasEntry ? 'has-entry' : ''}`;
+        el.innerText = d;
+        el.onclick = () => { selectedDateStr = ds; resetInputArea(); renderTodos(ds); renderCalendar(); };
+        grid.appendChild(el);
+    }
+}
+
+function resetInputArea() {
+    document.getElementById('diary-date-display').innerText = formatDateChinese(selectedDateStr);
+    document.getElementById('diary-content').value = '';
+    document.getElementById('today-count').innerText = allEntries[selectedDateStr] ? allEntries[selectedDateStr].length : 0;
+    currentTags = [];
+    renderTags();
+    updateAudioUI('');
+    document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('media-gallery').innerHTML = '';
+}
+
+function updateAudioUI(audioSrc) {
+    const container = document.getElementById('audio-player-container');
+    const player = document.getElementById('diary-audio');
+    const delBtn = document.getElementById('delete-audio');
+    const status = document.getElementById('record-status');
+    if (audioSrc) {
+        container.classList.remove('hidden');
+        player.src = audioSrc;
+        delBtn.classList.remove('hidden');
+        status.innerText = "语音已准备";
+    } else {
+        container.classList.add('hidden');
+        player.src = "";
+        delBtn.classList.add('hidden');
+        status.innerText = "录制语音回忆";
+    }
+}
+
+/* --- 核心交互 --- */
+function saveDiary() {
+    const content = document.getElementById('diary-content').value;
+    const mood = document.querySelector('.mood-btn.active')?.dataset.mood || '';
+    const audio = document.getElementById('diary-audio').src;
+    if(!content && !mood && !audio) return alert('记录点什么吧！');
+    const media = [];
+    document.querySelectorAll('.media-gallery-item').forEach(el => media.push({ type: el.dataset.type, data: el.dataset.src }));
+    const newEntry = {
+        id: "id_" + Date.now(),
+        time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+        content, mood, audio: (audio.startsWith('data:') || audio.startsWith('blob:')) ? audio : '',
+        media, tags: [...currentTags]
+    };
+    if (!allEntries[selectedDateStr]) allEntries[selectedDateStr] = [];
+    allEntries[selectedDateStr].push(newEntry);
+    localStorage.setItem('oceanEntries_v2', JSON.stringify(allEntries));
+    alert('✨ 已封存');
+    resetInputArea();
+    renderCalendar();
+}
+
+function renderTags() {
+    const container = document.getElementById('tag-container');
+    container.innerHTML = '';
+    currentTags.forEach((tag, idx) => {
+        const span = document.createElement('span');
+        span.className = 'tag-pill';
+        span.innerHTML = `#${tag} <i class="fa fa-times ml-1 cursor-pointer" onclick="removeTag(${idx})"></i>`;
+        container.appendChild(span);
+    });
+}
+function removeTag(idx) { currentTags.splice(idx, 1); renderTags(); }
+
+/* --- 列表与统计 --- */
+function renderDiaryList() {
+    const container = document.getElementById('diary-list-content');
+    container.innerHTML = '';
+    const sortedDates = Object.keys(allEntries).sort((a,b) => b.localeCompare(a));
+    if(!sortedDates.length) return container.innerHTML = '<p class="text-center py-10 opacity-40 italic">暂无航行记录</p>';
+    sortedDates.forEach(ds => {
+        const group = document.createElement('div');
+        group.className = 'mb-6';
+        group.innerHTML = `<div class="font-bold text-primary mb-3 text-sm">${formatDateChinese(ds)}</div>`;
+        allEntries[ds].forEach(entry => {
+            const card = document.createElement('div');
+            card.className = 'archive-card';
+            card.onclick = () => showDetail(ds, entry.id);
+            card.innerHTML = `<div class="archive-dot"></div><div class="bg-white/50 p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                <div class="flex justify-between items-center"><div class="flex items-center gap-2"><span class="text-2xl">${MOOD_EMOJI[entry.mood] || '⚪'}</span>
+                <span class="text-xs font-bold text-gray-300">${entry.time}</span></div><i class="fa fa-chevron-right text-gray-200"></i></div>
+                <p class="mt-2 text-gray-600 line-clamp-1 text-sm">${entry.content || '[多媒体记录]'}</p></div>`;
+            group.appendChild(card);
+        });
+        container.appendChild(group);
+    });
+}
+
+function showDetail(ds, entryId) {
+    const entry = allEntries[ds].find(e => e.id === entryId);
+    if(!entry) return;
+    document.getElementById('detail-mood-display').innerText = MOOD_EMOJI[entry.mood] || '⚪';
+    document.getElementById('detail-date').innerText = formatDateChinese(ds);
+    document.getElementById('detail-time').innerText = "记录于 " + entry.time;
+    document.getElementById('detail-content').innerText = entry.content || "无文字内容";
+    const mediaBox = document.getElementById('detail-media');
+    mediaBox.innerHTML = '';
+    entry.media.forEach(m => {
+        const div = document.createElement('div');
+        div.className = 'w-full rounded-2xl overflow-hidden border mb-2';
+        div.innerHTML = m.type === 'image' ? `<img src="${m.data}" class="w-full">` : `<video src="${m.data}" controls class="w-full"></video>`;
+        mediaBox.appendChild(div);
+    });
+    const audioBox = document.getElementById('detail-audio-box');
+    audioBox.innerHTML = entry.audio ? `<audio src="${entry.audio}" controls class="w-full"></audio>` : '';
+    document.getElementById('detail-tags').innerHTML = entry.tags.map(t => `<span class="tag-pill"># ${t}</span>`).join('') || '<span class="text-xs opacity-30">无标签</span>';
+    document.getElementById('detail-delete-btn').onclick = () => {
+        if(confirm('确定删除吗？')) {
+            allEntries[ds] = allEntries[ds].filter(e => e.id !== entryId);
+            if(!allEntries[ds].length) delete allEntries[ds];
+            localStorage.setItem('oceanEntries_v2', JSON.stringify(allEntries));
+            document.getElementById('detail-modal').classList.add('hidden');
+            renderDiaryList(); renderCalendar(); resetInputArea();
+        }
+    };
+    document.getElementById('detail-modal').classList.remove('hidden');
+}
+
+function showStats() {
+    document.getElementById('stats-modal').classList.remove('hidden');
+    const moodCounts = { excited:0, happy:0, neutral:0, tired:0, sad:0, angry:0 };
+    const tagCounts = {};
+    Object.values(allEntries).flat().forEach(e => {
+        if(e.mood) moodCounts[e.mood]++;
+        (e.tags || []).forEach(t => tagCounts[t] = (tagCounts[t] || 0) + 1);
+    });
+    const tagList = document.getElementById('tag-stats-list');
+    tagList.innerHTML = '';
+    Object.entries(tagCounts).sort((a,b)=>b[1]-a[1]).forEach(([tag, count]) => {
+        const div = document.createElement('div');
+        div.className = 'flex justify-between items-center text-sm p-2 bg-orange-50 rounded-lg';
+        div.innerHTML = `<span># ${tag}</span><span class="bg-orange-200 px-2 rounded-full text-xs">${count}次</span>`;
+        tagList.appendChild(div);
+    });
+    setTimeout(() => {
+        if(window.mChart) window.mChart.destroy();
+        window.mChart = new Chart(document.getElementById('moodChart'), {
+            type: 'doughnut',
+            data: { labels: Object.values(MOOD_NAME), datasets: [{ data: Object.values(moodCounts), backgroundColor: ['#F97316','#FBBF24','#9CA3AF','#A78BFA','#60A5FA','#F87171'] }] },
+            options: { responsive:true, maintainAspectRatio:false }
+        });
+    }, 300);
+}
+
+/* --- 事件监听 --- */
+function setupEventListeners() {
+    document.getElementById('save-diary').onclick = saveDiary;
+    document.getElementById('btn-list').onclick = () => { renderDiaryList(); document.getElementById('list-modal').classList.remove('hidden'); };
+    document.getElementById('btn-stats').onclick = showStats;
+    document.getElementById('prev-month').onclick = () => { currentViewDate.setMonth(currentViewDate.getMonth() - 1); renderCalendar(); };
+    document.getElementById('next-month').onclick = () => { currentViewDate.setMonth(currentViewDate.getMonth() + 1); renderCalendar(); };
+    
+    // 适配移动端的标签输入逻辑
+    const tagInput = document.getElementById('tag-input');
+    tagInput.oninput = (e) => {
+        const val = e.target.value;
+        if (val.includes(' ') || val.includes('　')) {
+            const tags = val.split(/[ 　]+/);
+            tags.forEach(t => {
+                const ct = t.trim().replace(/^#/, '');
+                if (ct && !currentTags.includes(ct)) { currentTags.push(ct); }
+            });
+            renderTags();
+            e.target.value = '';
+        }
+    };
+    tagInput.onkeydown = (e) => {
+        if (e.key === 'Enter' && e.target.value.trim()) {
+            const ct = e.target.value.trim().replace(/^#/, '');
+            if (ct && !currentTags.includes(ct)) { currentTags.push(ct); renderTags(); }
+            e.target.value = '';
+        }
+    };
+
+    document.querySelectorAll('.mood-btn').forEach(btn => {
+        btn.onclick = () => {
+            document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        };
+    });
+
+    document.querySelectorAll('.close-modal').forEach(el => el.onclick = () => {
+        document.getElementById('list-modal').classList.add('hidden');
+        document.getElementById('stats-modal').classList.add('hidden');
+    });
+
+    // 语音
+    document.getElementById('record-btn').onclick = async () => {
+        if(isRecording) { mediaRecorder.stop(); isRecording = false; updateRecordUI(); }
+        else {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => updateAudioUI(reader.result);
+                    reader.readAsDataURL(new Blob(audioChunks, { type: 'audio/mpeg' }));
+                };
+                mediaRecorder.start(); isRecording = true; updateRecordUI();
+            } catch (e) { alert("麦克风权限不足"); }
+        }
+    };
+    document.getElementById('delete-audio').onclick = () => updateAudioUI('');
+    
+    // 媒体上传
+    document.getElementById('img-upload').onchange = (e) => Array.from(e.target.files).forEach(f => handleFileUpload(f, 'image'));
+    document.getElementById('video-upload').onchange = (e) => { if(e.target.files[0]) handleFileUpload(e.target.files[0], 'video'); };
+}
+
+function handleFileUpload(file, type) {
+    if (file.size > 3 * 1024 * 1024) return alert("文件需小于3MB");
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const div = document.createElement('div');
+        div.className = 'media-preview media-gallery-item';
+        div.dataset.type = type; div.dataset.src = e.target.result;
+        div.innerHTML = (type === 'image' ? `<img src="${e.target.result}">` : `<video src="${e.target.result}"></video>`) + 
+                        `<div class="absolute top-0 right-0 bg-red-500 text-white w-4 h-4 text-[10px] flex items-center justify-center" onclick="this.parentElement.remove()">×</div>`;
+        document.getElementById('media-gallery').appendChild(div);
+    };
+    reader.readAsDataURL(file);
+}
+
+function exportData() {
+    const blob = new Blob([JSON.stringify({ entries: allEntries, todos: allTodos })], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `漂流记备份_${formatDate(new Date())}.json`;
+    a.click();
+}
+
+function renderTodos(ds) {
+    const container = document.getElementById('todo-list');
+    container.innerHTML = '';
+    (allTodos[ds] || []).forEach((t, i) => {
+        const d = document.createElement('div');
+        d.className = 'flex items-center gap-2 text-xs bg-white/60 p-3 rounded-xl border';
+        d.innerHTML = `<input type="checkbox" ${t.done?'checked':''} onchange="allTodos['${ds}'][${i}].done=!allTodos['${ds}'][${i}].done;localStorage.setItem('oceanTodos', JSON.stringify(allTodos));renderTodos('${ds}')">
+                       <span class="flex-1 ${t.done?'line-through opacity-40':''}">${t.text}</span>`;
+        container.appendChild(d);
+    });
+}
+
+window.onload = init;
+</script>
+</body>
+</html>
